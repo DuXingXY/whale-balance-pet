@@ -1,0 +1,18 @@
+{
+  "name": "whale-balance-pet",
+  "version": "1.3.6",
+  "description": "多站点余额桌宠，参考 MeteorNOX 的小鲸鱼项目",
+  "main": "main.cjs",
+  "license": "MIT",
+  "private": true,
+  "author": "DuXingXY",
+  "repository": { "type": "git", "url": "https://github.com/DuXingXY/whale-balance-pet.git" },
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "electron .",
+    "demo": "electron . --demo",
+    "test": "node --test tests/*.test.cjs",
+    "package:win": "node scripts/package-windows.cjs"
+  },
+  "devDependencies": { "electron": "44.5.1" }
+}

@@ -1,0 +1,66 @@
+{
+  "default": {
+    "name": "Deepseek",
+    "file": "whale.png",
+    "draw": {
+      "width": 1,
+      "height": 1,
+      "left": 0,
+      "top": 0
+    },
+    "bounds": {
+      "left": 0.07377049180327869,
+      "top": 0.01639344262295082,
+      "right": 1,
+      "bottom": 1
+    }
+  },
+  "orange": {
+    "name": "Claude",
+    "file": "skin-orange.png",
+    "draw": {
+      "width": 1,
+      "height": 0.9102661596958175,
+      "left": 0,
+      "top": 0.08973384030418252
+    },
+    "bounds": {
+      "left": 0,
+      "top": 0.09049429657794678,
+      "right": 1,
+      "bottom": 1
+    }
+  },
+  "purple": {
+    "name": "Gemini",
+    "file": "skin-purple.png",
+    "draw": {
+      "width": 1.1166518254674977,
+      "height": 1.1166518254674977,
+      "left": -0.11665182546749775,
+      "top": -0.11665182546749775
+    },
+    "bounds": {
+      "left": 2.7755575615628914e-17,
+      "top": 0.08726625111308997,
+      "right": 1,
+      "bottom": 1
+    }
+  },
+  "white": {
+    "name": "Codex",
+    "file": "skin-white-cutout.png",
+    "draw": {
+      "width": 1.0064205457463884,
+      "height": 1.0064205457463884,
+      "left": -0.006420545746388395,
+      "top": -0.006420545746388395
+    },
+    "bounds": {
+      "left": 4.7704895589362195e-17,
+      "top": 0.0008025682182986032,
+      "right": 1,
+      "bottom": 1
+    }
+  }
+}

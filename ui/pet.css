@@ -1,0 +1,14 @@
+:root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#29365f;color-scheme:light}*{box-sizing:border-box}body{position:relative;margin:0;width:340px;height:470px;background:transparent;overflow:hidden;user-select:none}.clip-definitions{position:absolute;width:0;height:0;pointer-events:none}#bubble{position:absolute;top:136px;left:0;width:340px;height:226px;z-index:1;pointer-events:none}#bubble-art{position:absolute;top:0;left:0;width:340px;height:340px;clip-path:url(#bubble-ink);pointer-events:none;-webkit-user-drag:none}#content{pointer-events:auto;position:absolute;top:36px;left:64px;width:180px;max-height:100px;overflow:auto;scrollbar-width:thin;scrollbar-color:#8996b3 transparent;overscroll-behavior:contain}#bubble.multiple #content{top:46px;left:57px;width:183px;max-height:90px}.single-name{width:55px;height:23px;font-size:13px;font-weight:600;line-height:23px;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.single-money{display:flex;align-items:center;width:166px;height:56px;font-family:Consolas,"Microsoft YaHei",monospace;font-size:38px;font-weight:700;line-height:1.25;letter-spacing:-1px;white-space:nowrap}.pet-row{display:flex;justify-content:space-between;align-items:center;gap:7px;min-height:30px}.row-name{font-size:12px;font-weight:600;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.row-money{flex-shrink:0;font-family:Consolas,"Microsoft YaHei",monospace;font-size:23px;font-weight:700;letter-spacing:-.7px;white-space:nowrap}.low{color:#a25016}#character{position:absolute;left:150px;bottom:17px;width:190px;height:190px;object-fit:contain;cursor:grab;-webkit-user-drag:none;transform-origin:50% 95%;transform:translateZ(0);will-change:transform}#character.dragging{cursor:grabbing}body.keyboard-focus #character:focus{outline:2px solid #7197d9;outline-offset:2px;border-radius:12px}#character:active{filter:brightness(1.04)}[hidden]{display:none!important}body.size-150 #character{width:150px;height:150px;left:190px}body.size-230 #character{width:230px;height:230px;left:110px}
+
+
+
+
+
+#bubble.below #bubble-art{transform:scaleY(-1);transform-origin:50% 113px}#bubble.below #content{top:96px}#bubble.below.multiple #content{top:94px}
+
+
+
+#character{overflow:hidden;outline:none}#character-art{position:absolute;width:100%;height:100%;left:0;top:0;display:block;pointer-events:none;-webkit-user-drag:none}
+
+
+.deduction-layer{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:2}.balance-deduction{position:absolute;color:#c52b40;font:700 17px/1.3 Consolas,"Microsoft YaHei",monospace;white-space:nowrap;pointer-events:none;text-shadow:0 1px 2px #fff;will-change:transform,opacity}.balance-deduction.multiple{font-size:14px}
