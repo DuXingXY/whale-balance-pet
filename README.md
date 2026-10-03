@@ -22,6 +22,22 @@ npm run package:win
 
 打包结果位于 `dist/WhaleBalance-win32-x64/`，发布或复制时保留完整文件夹。支持的 Windows 使用体验已做本机验证，其他操作系统未提供便携构建。
 
+### 瘦身构建
+
+```powershell
+npm run package:win:slim
+# 同时生成高压缩率 7z 包，或将 7z 改为 zip：
+npm run package:win:slim -- --archive=7z
+# 输出到指定的新目录：
+npm run package:win:slim -- --output=D:\Codex\WhaleBalance-slim --archive=zip
+```
+
+默认输出为 `dist/WhaleBalance-win32-x64-slim/`，压缩包位于程序目录旁。每次构建需使用尚不存在的输出目录；压缩依赖支持 ZIP / 7z 写入的 Windows `tar.exe`。未指定 `--archive` 时只生成便携程序目录。
+
+瘦身构建保留五个角色、气泡、点击音效和全部应用功能，以及简体中文、繁体中文、英文语言包；不改变角色图片或界面代码。仅跳过未使用的原图、旧 GIF、Electron 示例程序和软件渲染不使用的可选 GPU 库，保留运行所需库、许可证和来源说明。完整构建仍使用 `npm run package:win`。
+
+当前仅验证 Electron 44.5.1，升级运行时后需重新评估，瘦身脚本会拒绝其他运行时版本。本机 Windows 检查包括五个角色逐像素对比、音效播放、余额显示、用量面板、大小切换和加密存储；其他电脑尚需兼容性验证。1.4.4 评估包约为 ZIP 130.2 MiB / 7z 94.7 MiB，解压后约 290.6 MiB；脚本会输出本次构建的实际体积。
+
 站点配置和加密 Key 保存在本机应用数据目录的 `WhaleBalance` 文件夹，未包含在源码与下载包内。
 
 参考 [MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget) 的 For-Codex 分支制作。沿用原角色，使用用户提供的气泡素材和点击音效，新增独立的多站点管理界面、接口适配、凭据加密和并发监视。
