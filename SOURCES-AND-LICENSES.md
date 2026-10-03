@@ -41,3 +41,13 @@
 ```text
 Use case: background-extraction. Edit target: the attached white/lavender-haired chibi illustration. Intended asset: a Windows desktop pet transparent PNG cutout. Remove only the opaque black background, including the background gaps inside the loop of hair above her head and gaps between strands at the silhouette. Preserve the existing character as faithfully as possible: exact face, sleepy purple eyes, long pale hair, swept forelock, pointed ears, navy outlines, knot-shaped accessories and dangling beads, pale lace clothing, bust pose and bottom crop. Keep the subject's dark outlines and decorations opaque; no black rectangular background, no new backdrop, no shadow outside the illustration, no text, no watermark. Do not redesign, recolor, change expression, add accessories, or invent body parts. Real transparent alpha channel, clean antialiased cutout.
 ```
+
+## 玲绪角色（2026-10-03）
+
+- `assets/skin-lingxu.png`：用户提供的附件 `ce5a088cc273d002d18f416ad1bef8f1.png` 的透明底版本。
+- 使用内置 `image_gen` 进行背景提取，保留原角色构图、服饰和表情；不声明角色设计为原创。
+- 内置工具提示词（`transparent_background: true`）：
+
+```text
+Use case: background-extraction. Asset type: transparent PNG sprite for an existing desktop pet app. Input image 1 is the exact edit target. Remove only the solid black background surrounding the illustrated character, including background gaps between hair strands. Preserve the existing character illustration as closely as possible: identical pale peach blonde long hair, blue eyes, facial expression, blush, dark outlines, red bow and red and black uniform, original pose, framing and original crop at right and bottom. Do not redesign, redraw, add body parts or complete the cropped areas. Preserve all dark pixels that belong to the character. Output actual RGBA transparency with clean antialiased silhouette, no black matte or halo, no shadow, no text, no checkerboard painted into the image. Keep the same square composition.
+```

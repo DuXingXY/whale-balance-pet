@@ -43,6 +43,13 @@ async function readBoundedJsonText(response, limit = 1024 * 1024) {
 }
 class BalanceProvider {
   constructor(fetchImpl = fetch) { this.fetch = fetchImpl; }
+  async queryUsage(p, key, period) {
+    const params = new URLSearchParams({ days: String(period.days), start_date: period.start, end_date: period.end, timezone: period.timezone });
+    try {
+      const payload = await this.json(p, '/v1/usage?' + params, key);
+      return require('./usage.cjs').normalizeUsage(payload, period, name => diagnosticText(name, key) || '未命名模型');
+    } catch (e) { if (e instanceof ProviderError) e.message = e.message.replaceAll('余额', '用量'); throw e; }
+  }
   async json(profile, path, key, { method = 'GET', auth = 'bearer', header = 'x-api-key', body = '', signal } = {}) {
     const base = new URL(profile.baseUrl), url = new URL(path, base.origin);
     if (url.origin !== base.origin) throw new ProviderError('CONFIG', '查询接口必须与站点地址同域');
@@ -65,7 +72,7 @@ class BalanceProvider {
     if (!(response.headers.get('content-type') || '').includes('json')) { try { await response.body?.cancel(); } catch {} throw new ProviderError('NOT_JSON', '接口返回了网页或验证页，请核对余额接口', details); }
     let data; try { data = JSON.parse(await readBoundedJsonText(response)); }
     catch (e) { if (e instanceof ProviderError) { e.details = { ...details, ...e.details }; throw e; } throw new ProviderError('SHAPE', '接口返回的 JSON 无法解析', details); }
-    if (!data || typeof data !== 'object' || data.success === false || data.ok === false || data.status === false || data.isValid === false || (data.code != null && ![0, 200, '0', '200'].includes(data.code))) throw new ProviderError('API_ERROR', '服务商拒绝查询，请检查 Key 与接口设置', { ...details, ...serverDetails(data, key) });
+    if (!data || typeof data !== 'object' || data.success === false || data.ok === false || data.status === false || data.isValid === false || (data.code != null && ![true, 0, 200, '0', '200'].includes(data.code))) throw new ProviderError('API_ERROR', '服务商拒绝查询，请检查 Key 与接口设置', { ...details, ...serverDetails(data, key) });
     return data;
   }
   async query(p, key, signal) {
@@ -96,9 +103,10 @@ class BalanceProvider {
       if (total == null || raw == null || raw < 0) throw new ProviderError('SHAPE', '账单接口缺少有效额度 / 已用字段');
       used = raw / p.billingDivisor; amount = total - used; currency = 'USD'; kind = 'api-balance';
     } else if (p.provider === 'newapi') {
-      const payload = await json('/api/usage/token'), d = payload.data || payload;
+      const payload = await json('/api/usage/token/'), d = payload.data || payload;
       kind = 'key-quota'; unlimited = d.unlimited_quota === true;
-      if (numeric(d.total_available) != null && numeric(d.total_used) != null) { amount = numeric(d.total_available); used = numeric(d.total_used); }
+      // New API returns raw quota in both total_* and legacy *_quota fields.
+      if (numeric(d.total_available) != null && numeric(d.total_used) != null) { amount = numeric(d.total_available) / p.quotaPerUnit; used = numeric(d.total_used) / p.quotaPerUnit; }
       else { const q = numeric(d.remain_quota); amount = q == null ? null : q / p.quotaPerUnit; const u = numeric(d.used_quota); used = u == null ? null : u / p.quotaPerUnit; }
       if (unlimited) amount = null;
     } else if (p.provider === 'deepseek') {

@@ -3,6 +3,7 @@ const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, scre
 const fs = require('node:fs'); const path = require('node:path'); const { pathToFileURL } = require('node:url');
 const { Store } = require('./core/store.cjs'); const { BalanceProvider } = require('./core/providers.cjs'); const { Monitor } = require('./core/monitor.cjs');
 const { placePet } = require('./core/placement.cjs');
+const { UsageService, normalizeUsage } = require('./core/usage.cjs');
 const skins = require('./assets/skins.json');
 app.setName('WhaleBalance');
 const demo = process.argv.includes('--demo'); const qa = process.argv.includes('--qa');
@@ -11,7 +12,7 @@ if (explicitData) app.setPath('userData', path.resolve(explicitData));
 else if (demo) app.setPath('userData', path.join(app.getPath('temp'), 'whale-balance-demo-' + process.pid));
 if (process.platform === 'win32') { app.disableHardwareAcceleration(); app.setAppUserModelId('WhaleBalance.Desktop'); }
 if (!app.requestSingleInstanceLock()) { app.quit(); }
-let store, monitor, pet, manager, tray, quitting = false, dragStart = null;
+let store, monitor, usageService, pet, manager, tray, quitting = false, dragStart = null;
 let petAnchor, petLayout, placing = false;
 const uiPath = f => path.join(__dirname, 'ui', f);
 const windowOptions = { contextIsolation: true, sandbox: true, nodeIntegration: false, preload: path.join(__dirname, 'preload.cjs') };
@@ -81,6 +82,18 @@ app.whenReady().then(() => {
   }
   let provider = new BalanceProvider();
   if (demo) provider = { query: async p => ({ amount: p.provider === 'deepseek' ? 28.46 : p.provider === 'billing' ? 3.8 : 56.93, kind: p.provider === 'billing' ? 'api-balance' : 'wallet', used: null, currency: p.currency, windows: [], unlimited: false, adapter: p.provider }) };
+  if (demo) provider.queryUsage = async (_p, _key, period) => {
+    const daily = [];
+    for (let i = 0; i < period.days; i++) {
+      const date = new Date(period.start + 'T00:00:00Z'); date.setUTCDate(date.getUTCDate() + i);
+      const requests = i % 5 === 0 ? 0 : 20 + i * 3;
+      daily.push({ date: date.toISOString().slice(0, 10), requests, total_tokens: requests * 15360, input_tokens: requests * 7000, output_tokens: requests * 360, cache_creation_tokens: requests * 1000, cache_read_tokens: requests * 7000 });
+    }
+    const requests = daily.reduce((n, d) => n + d.requests, 0), total_tokens = daily.reduce((n, d) => n + d.total_tokens, 0);
+    return normalizeUsage({ usage: { total: { requests: 18020, total_tokens: 276787200, input_tokens: 126140000, output_tokens: 6487200, cache_creation_tokens: 18020000, cache_read_tokens: 126140000 } }, daily_usage: daily,
+      model_stats: [{ model: 'claude-sonnet-4-6', requests: Math.round(requests * .7), total_tokens: Math.round(total_tokens * .7) }, { model: 'gemini-2.5-pro', requests: requests - Math.round(requests * .7), total_tokens: total_tokens - Math.round(total_tokens * .7) }] }, period);
+  };
+  usageService = new UsageService(store, provider);
   monitor = new Monitor(store, provider, { changed: broadcast, notify: (p, r) => {
     if (!demo && !qa && Notification.isSupported()) { const n = new Notification({ title: p.name + ' · 余额提醒', body: '可用金额 ' + r.amount.toFixed(2) + ' ' + r.currency + '，已达到设定阈值', icon: path.join(__dirname, 'assets', 'whale.png') }); n.on('click', openManager); n.show(); }
   } });
@@ -106,6 +119,7 @@ app.whenReady().then(() => {
   handle('select-site', 'manager', id => { store.select(id); store.preferences({ bubbleMode: 'selected' }); broadcast(); });
   handle('refresh', 'any', async id => { if (id === 'all') await refreshAll(); else await monitor.refresh(id); return snapshot(); });
   handle('test', 'manager', async input => { const { profile, key } = store.draft(input); return provider.query(profile, key); });
+  handle('usage-summary', 'manager', range => usageService.query(range));
   handle('copy-test-result', 'manager', text => { if (typeof text !== 'string' || text.length > 20000) throw new Error('复制内容无效'); clipboard.writeText(text); });
   handle('preferences', 'manager', p => { store.preferences(p); pet.setAlwaysOnTop(store.data.preferences.pinned); fitPet(Object.hasOwn(p, 'skin') || Object.hasOwn(p, 'petSize')); broadcast(); });
   handle('open-dashboard', 'any', id => { const p = store.get(id); if (p) return shell.openExternal(p.dashboardUrl); });
