@@ -1,6 +1,6 @@
 {
   "name": "whale-balance-pet",
-  "version": "1.4.5",
+  "version": "1.7.2",
   "description": "多站点余额桌宠，参考 MeteorNOX 的小鲸鱼项目",
   "main": "main.cjs",
   "license": "MIT",
@@ -12,8 +12,10 @@
     "start": "electron .",
     "demo": "electron . --demo",
     "test": "node --test tests/*.test.cjs",
+    "qa:electron": "electron scripts/qa-electron.cjs --demo --qa",
     "package:win": "node scripts/package-windows.cjs",
-    "package:win:slim": "node scripts/package-windows.cjs --slim"
+    "package:win:slim": "node scripts/package-windows.cjs --slim",
+    "package:win:lean": "node scripts/package-windows.cjs --slim --lean"
   },
   "devDependencies": { "electron": "44.5.1" }
 }

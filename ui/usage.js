@@ -2,21 +2,26 @@
 (() => {
   const V = window.View, $ = id => document.getElementById(id);
   const panel = V.el('section', 'usage-panel'); panel.id = 'usage-panel'; panel.setAttribute('aria-labelledby', 'usage-title');
-  panel.innerHTML = `<h2 id="usage-title" class="usage-sr">用量汇总</h2>
-    <div class="usage-toolbar"><div class="usage-tabs" role="group" aria-label="用量视图"><button type="button" data-usage-tab="overview" aria-pressed="true">概览</button><button type="button" data-usage-tab="models" aria-pressed="false">模型</button><button type="button" data-usage-tab="sites" aria-pressed="false">站点</button></div><div class="usage-ranges" role="group" aria-label="统计时间范围"><button type="button" data-usage-range="all" aria-pressed="false">累计</button><button type="button" data-usage-range="90" aria-pressed="false">90d</button><button type="button" data-usage-range="30" aria-pressed="true">30d</button><button type="button" data-usage-range="7" aria-pressed="false">7d</button><button id="usage-refresh" type="button" aria-label="刷新用量" title="刷新用量"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2 6M20 4v7h-7"/></svg></button></div></div>
+  panel.innerHTML = `<h2 id="usage-title" class="usage-sr">用量汇总与 API 仪表盘</h2>
+    <div class="usage-toolbar"><div class="usage-tabs" role="group" aria-label="用量视图"><button type="button" data-usage-tab="overview" aria-pressed="true">概览</button><button type="button" data-usage-tab="api" aria-pressed="false">API 仪表盘</button><button type="button" data-usage-tab="spending" aria-pressed="false">金额 / 秒表</button><button type="button" data-usage-tab="models" aria-pressed="false">模型</button><button type="button" data-usage-tab="sites" aria-pressed="false">站点</button></div><div class="usage-ranges" role="group" aria-label="统计时间范围"><button type="button" data-usage-range="all" aria-pressed="false">累计</button><button type="button" data-usage-range="90" aria-pressed="false">90d</button><button type="button" data-usage-range="30" aria-pressed="true">30d</button><button type="button" data-usage-range="7" aria-pressed="false">7d</button><button id="usage-refresh" type="button" aria-label="刷新用量" title="刷新用量"><svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M20 11a8 8 0 1 0-2 6M20 4v7h-7"/></svg></button></div></div>
     <div id="usage-overview-view"><div id="usage-metrics" class="usage-metrics"></div><div class="usage-heat-wrap"><div id="usage-heatmap" role="group" aria-label="每日总 Token 热力图，按列从周一到周日排列"></div><div id="usage-day-tooltip" role="tooltip" hidden></div></div>
     <div class="usage-heat-footer"><span id="usage-heat-caption">每日 Token · 颜色越浅，用量越高</span><span class="usage-heat-legend" aria-label="颜色从灰色无调用到深蓝、浅蓝表示用量增加">少 <i data-level="0"></i><i data-level="1"></i><i data-level="2"></i><i data-level="3"></i><i data-level="4"></i> 多</span></div></div>
     <div id="usage-sites-view" class="usage-table-wrap" hidden><table class="usage-table"><caption id="usage-sites-caption">各站点用量与合计</caption><thead><tr><th scope="col">站点 / Key</th><th scope="col">总 Token</th><th scope="col">请求次数</th><th scope="col" id="usage-days-head">活跃天数</th><th scope="col" id="usage-model-head">常用模型</th><th scope="col">数据状态</th></tr></thead><tbody id="usage-site-rows"></tbody><tfoot id="usage-site-total"></tfoot></table></div>
     <div id="usage-models-view" class="usage-table-wrap" hidden><table class="usage-table"><caption id="usage-models-caption">模型排行 · 按请求次数</caption><thead><tr><th scope="col">模型</th><th scope="col">请求次数</th><th scope="col">总 Token</th><th scope="col">输入 Token</th><th scope="col">输出 Token</th></tr></thead><tbody id="usage-model-rows"></tbody></table></div>
     <div class="usage-footbar"><p id="usage-notice" class="usage-notice" role="status">正在读取用量…</p><details class="usage-day-details"><summary>每日数据</summary><div class="usage-table-wrap"><table class="usage-table"><caption>所选范围的每日用量</caption><thead><tr><th scope="col">日期</th><th scope="col">总 Token</th><th scope="col">请求次数</th></tr></thead><tbody id="usage-daily-rows"></tbody></table></div></details><details class="usage-help"><summary>统计说明</summary><p id="usage-scope" class="usage-scope">活跃天数按日期去重；常用模型按请求次数排名；缺少统计的站点不计入对应合计。</p></details></div>`;
   document.querySelector('.overview').before(panel);
+  const dashboard = window.APIDashboard.create(panel);
+  const spendingView = window.SpendingView.create(panel);
   let range = '30', tab = 'overview', loading = false, signature = '', dirty = false;
   const number = n => n == null ? '—' : n.toLocaleString('zh-CN');
   const short = n => n == null ? '—' : n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : number(n);
   function row(values, cls = '') { const tr = V.el('tr', cls); values.forEach((value, i) => { const cell = V.el(i === 0 ? 'th' : 'td', '', value); if (i === 0) cell.scope = 'row'; tr.append(cell); }); return tr; }
   function coverage(n, s) { return n < s.sources ? `部分合计 · ${n}/${s.sources} 个 Key 提供数据` : `${n} 个 Key 提供数据`; }
   function renderHeatmap(s) {
-    const grid = $('usage-heatmap'), tooltip = $('usage-day-tooltip'); grid.replaceChildren(); tooltip.hidden = true;
+    const grid = $('usage-heatmap'), tooltip = $('usage-day-tooltip');
+    const focusedDate = grid.contains(document.activeElement) ? document.activeElement.dataset.date : null;
+    const selectedDate = focusedDate || grid.querySelector('[tabindex="0"]')?.dataset.date || s.period.end;
+    grid.replaceChildren(); tooltip.hidden = true;
     const end = new Date(s.period.end + 'T00:00:00Z'), sunday = new Date(end);
     sunday.setUTCDate(end.getUTCDate() + (7 - end.getUTCDay()) % 7);
     const start = new Date(sunday); start.setUTCDate(start.getUTCDate() - 181);
@@ -36,7 +41,7 @@
       const calls = available ? (d ? d.requests : 0) : null;
       const level = tokens == null ? 'unknown' : tokens === 0 ? '0' : String(Math.min(4, Math.max(1, Math.ceil(tokens / maximum * 4))));
       const description = key + ' · ' + (inRange ? `${tokens == null ? 'Token 未提供' : number(tokens) + ' Token'} · ${calls == null ? '请求次数未提供' : number(calls) + ' 次请求'}${s.activeCoverage < s.sources ? '（部分站点）' : ''}` : key > s.period.end ? '不在所选范围 / 尚未到来' : '不在所选范围');
-      const cell = V.el('button', 'usage-heat-cell'); cell.type = 'button'; cell.tabIndex = key === s.period.end ? 0 : -1; cell.dataset.date = key; cell.dataset.level = level; cell.setAttribute('aria-label', description); cell.setAttribute('aria-describedby', 'usage-day-tooltip');
+      const cell = V.el('button', 'usage-heat-cell'); cell.type = 'button'; cell.tabIndex = key === selectedDate ? 0 : -1; cell.dataset.date = key; cell.dataset.level = level; cell.setAttribute('aria-label', description); cell.setAttribute('aria-describedby', 'usage-day-tooltip');
       cell.addEventListener('pointerenter', () => show(cell, description)); cell.addEventListener('focus', () => show(cell, description));
       cell.addEventListener('pointerleave', () => { if (document.activeElement !== cell) tooltip.hidden = true; }); cell.addEventListener('blur', () => { tooltip.hidden = true; });
       cell.addEventListener('click', () => show(cell, description)); cell.addEventListener('keydown', e => {
@@ -47,10 +52,13 @@
       grid.append(cell);
       if (inRange) dailyRows.prepend(row([key, number(tokens), number(calls)]));
     }
+    if (!grid.querySelector('[tabindex="0"]')) grid.querySelector('[data-date="' + s.period.end + '"]').tabIndex = 0;
+    if (focusedDate) grid.querySelector('[tabindex="0"]').focus({ preventScroll: true });
     $('usage-heat-caption').textContent = `每日 Token · 近 ${s.period.days} 天${s.activeCoverage < s.sources ? ' · 部分数据' : ''}`;
     for (const swatch of panel.querySelectorAll('.usage-heat-legend i')) { const level = Number(swatch.dataset.level); swatch.title = level === 0 ? '0 Token' : `${number(Math.floor((level - 1) * maximum / 4) + 1)} — ${number(Math.ceil(level * maximum / 4))} Token`; }
   }
   function render(s) {
+    dashboard.render(s);
     const all = s.period.range === 'all', recent = all ? '近 90 天' : `近 ${s.period.days} 天`;
     $('usage-metrics').replaceChildren();
     for (const [label, value, detail, exact] of [
@@ -99,6 +107,10 @@
   for (const b of panel.querySelectorAll('[data-usage-tab]')) b.onclick = () => {
     tab = b.dataset.usageTab; for (const item of panel.querySelectorAll('[data-usage-tab]')) item.setAttribute('aria-pressed', String(item === b));
     $('usage-overview-view').hidden = tab !== 'overview';
+    $('usage-api-view').hidden = tab !== 'api';
+    spendingView.hidden = tab !== 'spending';
+    panel.querySelector('.usage-ranges').hidden = tab === 'spending';
+    panel.querySelector('.usage-footbar').hidden = tab === 'spending';
     $('usage-sites-view').hidden = tab !== 'sites'; $('usage-models-view').hidden = tab !== 'models';
   };
   function changed(s) {

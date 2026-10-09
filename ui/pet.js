@@ -3,6 +3,41 @@ const $ = id => document.getElementById(id), V = window.View;
 let state, visible = false, refreshing = false, manualError = '', pointer = null, dismissTimer, pressAnimation;
 let characterPixels = null, bubblePixels = null, bubbleMask = null, mouse = null, ignoring = false, lastClick = -Infinity;
 let currentSkin = '', skinGeneration = 0;
+let turnAnimation = null, turnFrom = 0, turnTo = 0, turnFrame;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+function turnAngle() {
+  const progress = turnAnimation?.effect.getComputedTiming().progress;
+  return progress == null ? turnTo : turnFrom + (turnTo - turnFrom) * progress;
+}
+function updateFacing(facing) {
+  const character = $('character'), previous = character.dataset.facing;
+  if (previous === facing) return;
+  const start = turnAngle(), end = facing === 'right' ? 180 : 0;
+  turnAnimation?.cancel(); cancelAnimationFrame(turnFrame); turnAnimation = null;
+  character.dataset.facing = facing; turnFrom = start; turnTo = end;
+  // Initial placement is immediate. Later turns rotate the same paper-like
+  // surface through its thin edge; click feedback stays on the outer frame.
+  if (!previous || reducedMotion.matches || Math.abs(end - start) < .1) return;
+  const animation = $('character-visual').animate([
+    { transform: `rotateY(${start}deg)` },
+    { transform: `rotateY(${end}deg)` },
+  ], { duration: 400 * Math.abs(end - start) / 180, easing: 'ease-in-out' });
+  turnAnimation = animation;
+  function trackTurn() {
+    if (turnAnimation !== animation) return;
+    updateMouseHandling(); turnFrame = requestAnimationFrame(trackTurn);
+  }
+  turnFrame = requestAnimationFrame(trackTurn);
+  animation.finished.then(() => {
+    if (turnAnimation !== animation) return;
+    turnAnimation = null; cancelAnimationFrame(turnFrame); updateMouseHandling();
+  }).catch(() => {});
+}
+reducedMotion.addEventListener('change', () => {
+  if (reducedMotion.matches) {
+    turnAnimation?.cancel(); turnAnimation = null; cancelAnimationFrame(turnFrame); updateMouseHandling();
+  }
+});
 const knownBalances = new Map(), deductions = new Map();
 const deductionLayer = V.el('div', 'deduction-layer');
 deductionLayer.setAttribute('aria-hidden', 'true'); $('bubble').append(deductionLayer);
@@ -49,7 +84,7 @@ function observeBalances(s) {
     if (st.status === 'ok') {
       if (old && old.currency === current.currency && old.kind === current.kind) {
         const decrease = Math.round((old.amount - current.amount) * 1e8) / 1e8;
-        if (decrease > 0) changes.push({ id: p.id, amount: decrease, currency: current.currency });
+        if (decrease > 0) { const shown = V.convert(decrease, current.currency, p); if (shown.amount != null) changes.push({ id: p.id, amount: shown.amount, currency: shown.currency }); }
         else if (decrease < 0) clearDeduction(p.id);
       } else if (old) clearDeduction(p.id);
       knownBalances.set(p.id, current);
@@ -62,9 +97,9 @@ function inside(r, x, y) { return x >= r.left && x < r.right && y >= r.top && y 
 function imagePixels(image) {
   try { const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight; const context = canvas.getContext('2d', { willReadFrequently: true }); context.drawImage(image, 0, 0); return { pixels: context.getImageData(0, 0, canvas.width, canvas.height), context }; } catch { return null; }
 }
-function hitImage(image, cache, x, y, mask) {
+function hitImage(image, cache, x, y, mask, mirrored = false) {
   const r = image.getBoundingClientRect(); if (!inside(r, x, y)) return false;
-  const nx = (x - r.left) / r.width, ny = (y - r.top) / r.height;
+  const nx = mirrored ? (r.right - x) / r.width : (x - r.left) / r.width, ny = (y - r.top) / r.height;
   if (cache && mask && !cache.context.isPointInPath(mask, nx, ny)) return false;
   if (!cache) return true;
   const p = cache.pixels, px = Math.min(p.width - 1, Math.floor(nx * p.width)), py = Math.min(p.height - 1, Math.floor(ny * p.height));
@@ -73,7 +108,7 @@ function hitImage(image, cache, x, y, mask) {
 function updateMouseHandling() {
   if (!mouse) return;
   const { x, y } = mouse;
-  const hit = !!pointer || (visible && hitImage($('bubble-art'), bubblePixels, x, y, bubbleMask)) || (inside($('character').getBoundingClientRect(), x, y) && hitImage($('character-art'), characterPixels, x, y));
+  const hit = !!pointer || (visible && hitImage($('bubble-art'), bubblePixels, x, y, bubbleMask)) || (inside($('character').getBoundingClientRect(), x, y) && hitImage($('character-art'), characterPixels, x, y, null, Math.cos(turnAngle() * Math.PI / 180) < 0));
   const next = !hit; if (next !== ignoring) { ignoring = next; window.whale.passThrough(next); }
 }
 function loadCharacter() { characterPixels = imagePixels($('character-art')); updateMouseHandling(); }
@@ -97,6 +132,7 @@ async function applySkin(s) {
 function applyLayout(layout) {
   if (!layout) return;
   const image = $('character'); image.style.left = layout.character.x + 'px'; image.style.top = layout.character.y + 'px'; image.style.bottom = 'auto';
+  updateFacing(layout.facing || 'left');
   image.style.transformOrigin = layout.origin.x + ' ' + layout.origin.y;
   $('bubble').style.left = (layout.bubble.left ?? 0) + 'px'; $('bubble').style.top = layout.bubble.top + 'px'; $('bubble').classList.toggle('below', layout.bubble.below);
   updateMouseHandling();
@@ -110,10 +146,10 @@ function loadBubble() {
 document.addEventListener('mousemove', e => { mouse = { x: e.clientX, y: e.clientY }; updateMouseHandling(); });
 function hideBubble() { clearTimeout(dismissTimer); visible = false; for (const id of deductions.keys()) clearDeduction(id); $('bubble').hidden = true; updateMouseHandling(); }
 function armDismiss() { clearTimeout(dismissTimer); const seconds = state?.preferences.bubbleSeconds ?? 10; if (visible && !refreshing && seconds > 0) dismissTimer = setTimeout(hideBubble, seconds * 1000); }
-function displayAmount(st) {
+function displayAmount(st, profile) {
   const result = refreshing || st.status === 'loading' ? st.snapshot || st.cached : st.status === 'ok' && !manualError ? st.snapshot : null;
-  const text = V.amount(result);
-  return result?.currency === 'USD' ? text.replace(/^US(?=\$)/, '') : text;
+  const text = V.amount(result, profile);
+  return V.convertedResult(result, profile)?.currency === 'USD' ? text.replace(/^US(?=\$)/, '') : text;
 }
 function render(s) {
   const previousSeconds = state?.preferences.bubbleSeconds;
@@ -130,7 +166,7 @@ function render(s) {
   else for (const p of sites) {
     const st = s.states[p.id] || { status: 'waiting' }, r = st.snapshot;
     const low = !refreshing && st.status === 'ok' && p.alert && r?.amount != null && r.amount <= p.threshold;
-    const money = V.el('div', (sites.length === 1 ? 'single-money' : 'row-money') + (low ? ' low' : ''), displayAmount(st)); money.dataset.moneySite = p.id;
+    const money = V.el('div', (sites.length === 1 ? 'single-money' : 'row-money') + (low ? ' low' : ''), displayAmount(st, p)); money.dataset.moneySite = p.id;
     if (sites.length === 1) $('content').append(V.el('div', 'single-name', p.name), money);
     else { const row = V.el('div', 'pet-row'); row.append(V.el('div', 'row-name', p.name), money); $('content').append(row); }
   }

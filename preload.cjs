@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('whale', {
   refresh: call('refresh'), test: arg => ipcRenderer.invoke('test', arg), preferences: call('preferences'), dashboard: call('open-dashboard'), hide: call('hide-pet'), show: call('show-pet'),
   copyTestResult: call('copy-test-result'),
   usage: call('usage-summary'),
+  spendingControl: call('spending-control'),
   drag: value => ipcRenderer.send('drag', value), passThrough: ignore => ipcRenderer.send('mouse-pass-through', ignore),
   onState: callback => { const fn = (_event, value) => callback(value); ipcRenderer.on('state', fn); return () => ipcRenderer.removeListener('state', fn); },
   onLayout: callback => { const fn = (_event, value) => callback(value); ipcRenderer.on('layout', fn); return () => ipcRenderer.removeListener('layout', fn); },

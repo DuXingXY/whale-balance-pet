@@ -4,6 +4,9 @@ const { spawnSync } = require('node:child_process');
 if (process.platform !== 'win32') throw new Error('此便携包构建脚本需要在 Windows 上运行。');
 const root = path.resolve(__dirname, '..');
 const slim = process.argv.includes('--slim');
+const compact = process.argv.includes('--compact');
+const lean = process.argv.includes('--lean');
+if (lean && (!slim || compact)) throw new Error('--lean 需要 --slim，且不能同时使用 --compact；它衡量普通文件总大小。');
 const runtimeArg = process.argv.find(a => a.startsWith('--runtime='));
 const outputArg = process.argv.find(a => a.startsWith('--output='));
 const archiveArg = process.argv.find(a => a.startsWith('--archive='));
@@ -38,9 +41,21 @@ for (const file of ['main.cjs', 'preload.cjs', 'package.json', 'core', 'ui', 'as
   fs.cpSync(source, path.join(app, file), { recursive: true, filter: asset => !slim || file !== 'assets' || asset === source || usedAssets.has(path.relative(source, asset).split(path.sep).join('/')) });
 }
 fs.copyFileSync(path.join(root, 'README.md'), path.join(target, '使用说明.md'));
+fs.mkdirSync(path.join(app, 'scripts'), { recursive: true });
+fs.copyFileSync(path.join(root, 'scripts', 'qa-electron.cjs'), path.join(app, 'scripts', 'qa-electron.cjs'));
+if (!lean) for (const file of ['compact-storage.ps1', 'Optimize-storage.cmd', 'Restore-storage.cmd']) fs.copyFileSync(path.join(root, 'scripts', file), path.join(target, file));
+if (lean) {
+  const report = require('./lean-resources.cjs').optimizeFolder(target);
+  fs.writeFileSync(target + '.lean.json', JSON.stringify(report, null, 2));
+  console.log('许可证去重和 PNG 无损重编码减少：' + (report.savedBytes / 1024 ** 2).toFixed(2) + ' MiB');
+}
 function bytes(directory) { return fs.readdirSync(directory, { withFileTypes: true }).reduce((sum, entry) => { const file = path.join(directory, entry.name); return sum + (entry.isDirectory() ? bytes(file) : fs.statSync(file).size); }, 0); }
 console.log('已生成' + (slim ? '瘦身' : '完整') + '便携包：' + target + '（' + (bytes(target) / 1024 ** 2).toFixed(2) + ' MiB）');
 console.log('保留完整文件夹，运行 WhaleBalance.exe；发布时压缩整个文件夹。');
+if (compact) {
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(target, 'compact-storage.ps1')], { stdio: 'inherit', windowsHide: true });
+  if (result.error || result.status !== 0) throw new Error('程序目录已生成，但磁盘压缩未完成。请查看输出；无需删除程序文件。');
+}
 if (archive) {
   const options = 'compression-level=9' + (archiveFormat === 'zip' ? ',hdrcharset=UTF-8' : '');
   const result = spawnSync('tar.exe', ['--format', archiveFormat === '7z' ? '7zip' : 'zip', '--options', options, '-cf', archive, '-C', path.dirname(target), path.basename(target)], { stdio: 'inherit', windowsHide: true });

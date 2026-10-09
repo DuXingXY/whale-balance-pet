@@ -63,3 +63,32 @@ test('late responses after changing/deleting a site are discarded', async t => {
   assert.equal(m.state(p.id).snapshot, undefined); assert.equal(m.state(p.id).cached, undefined);
   const second = m.refresh(p.id); m.invalidate(p.id); s.remove(p.id); complete(result(999)); await second; assert.equal(m.all()[p.id], undefined); assert.equal(m.books[p.id], undefined);
 });
+
+test('editing a paused site starts a new query before its cancelled request settles', async t => {
+  const s = store(t), p = s.save(input({ enabled: false })), pending = [];
+  const m = new Monitor(s, { query: (profile, key, signal) => new Promise(resolve => pending.push({ profile, key, signal, resolve })) });
+  const old = m.refresh(p.id);
+  s.save({ ...p, key: 'NEW-KEY', name: '更新的站点' }); m.invalidate(p.id);
+  const fresh = m.refresh(p.id);
+  assert.notEqual(fresh, old); assert.equal(pending.length, 2);
+  assert(pending[0].signal.aborted); assert.equal(pending[1].key, 'NEW-KEY');
+  pending[0].resolve(result(999)); await old;
+  assert.equal(m.refresh(p.id), fresh, 'old completion cannot remove the new job');
+  assert.equal(m.state(p.id).cached, undefined);
+  pending[1].resolve(result(42)); await fresh;
+  assert.equal(m.state(p.id).status, 'ok'); assert.equal(m.state(p.id).snapshot.amount, 42);
+});
+
+test('editing a queued site releases its old waiters and queries only its new configuration', async t => {
+  const s = store(t), sites = Array.from({ length: 4 }, (_, i) => s.save(input({ name: 'S' + i, key: 'K' + i, enabled: false })));
+  const pending = [], calls = [];
+  const m = new Monitor(s, { query: (p, key) => { calls.push(key); return new Promise(resolve => pending.push(resolve)); } });
+  const active = sites.slice(0, 3).map(p => m.refresh(p.id)), p = sites[3], queued = m.refresh(p.id);
+  s.save({ ...p, key: 'REPLACED' }); m.invalidate(p.id);
+  await queued;
+  const fresh = m.refresh(p.id); assert.equal(m.queue.length, 1);
+  pending[0](result(1)); await active[0];
+  assert.deepEqual(calls, ['K0', 'K1', 'K2', 'REPLACED']); assert.equal(m.active, 3);
+  pending.slice(1).forEach(resolve => resolve(result(2))); await Promise.all([...active.slice(1), fresh]);
+  assert.equal(m.state(p.id).snapshot.amount, 2); assert.equal(m.active, 0);
+});

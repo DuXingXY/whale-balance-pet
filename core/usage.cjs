@@ -5,7 +5,17 @@ const count = value => {
   if (!['number', 'string'].includes(typeof value) || (typeof value === 'string' && !value.trim())) return null;
   const n = Number(value); return Number.isSafeInteger(n) && n >= 0 ? n : null;
 };
-const stats = value => Object.fromEntries(METRICS.map(k => [k, count(value?.[k])]));
+function stats(value) {
+  const result = Object.fromEntries(METRICS.map(k => [k, count(value?.[k])]));
+  // Sub2API daily rows call cache creation "cache_write_tokens".
+  if (value && !Object.hasOwn(value, 'cache_creation_tokens')) result.cache_creation_tokens = count(value.cache_write_tokens);
+  if (value && !Object.hasOwn(value, 'total_tokens')) {
+    const tokens = ['input_tokens', 'output_tokens', 'cache_creation_tokens', 'cache_read_tokens'].map(k => result[k]);
+    const total = tokens.reduce((sum, n) => sum + (n ?? 0), 0);
+    if (tokens.every(n => n != null) && Number.isSafeInteger(total)) result.total_tokens = total;
+  }
+  return result;
+}
 function dateString(date) { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Hong_Kong', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date); }
 function usageRange(range = '30', now = Date.now()) {
   if (!['all', '7', '30', '90'].includes(range)) throw new Error('用量时间范围无效');
@@ -72,8 +82,8 @@ class UsageService {
         const key = this.store.key(p);
         if (!key) { rows[i] = { id: p.id, name: p.name, status: 'unconfigured', error: '请先保存 API Key' }; return null; }
         const identity = new URL(p.baseUrl).origin + ':' + createHash('sha256').update(key).digest('hex');
-        if (seen.has(identity)) { rows[i] = { id: p.id, name: p.name, status: 'duplicate', error: '相同站点与 Key，已并入“' + seen.get(identity) + '”' }; return null; }
-        seen.set(identity, p.name); return { p, key, i };
+        if (seen.has(identity)) { const original = seen.get(identity); rows[i] = { id: p.id, name: p.name, status: 'duplicate', duplicateOf: original.id, error: '相同站点与 Key，已并入“' + original.name + '”' }; return null; }
+        seen.set(identity, { id: p.id, name: p.name }); return { p, key, i };
       } catch { rows[i] = { id: p.id, name: p.name, status: 'error', error: '无法读取本机凭据，请重新保存 Key' }; return null; }
     }).filter(Boolean);
     const worker = async () => {

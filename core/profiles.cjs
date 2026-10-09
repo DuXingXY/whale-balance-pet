@@ -25,6 +25,11 @@ function validateProfile(input, previous) {
   const currency = String(input.currency || 'USD').toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error('币种请使用 USD、CNY 等三位代码');
   const c = input.custom || {};
+  const conversion = input.moneyConversion ?? previous?.moneyConversion ?? { enabled: false, rate: 1, currency: 'USD' };
+  if (!conversion || typeof conversion !== 'object' || Array.isArray(conversion)) throw new Error('金额转换设置无效');
+  if (!['USD', 'CNY'].includes(conversion.currency ?? 'USD')) throw new Error('显示币种请选择美元或人民币');
+  if (typeof (conversion.enabled ?? false) !== 'boolean') throw new Error('金额转换开关无效');
+  const moneyConversion = { enabled: conversion.enabled ?? false, rate: num(conversion.rate ?? 1, 1e-9, 1e9, '金额转换比例'), currency: conversion.currency ?? 'USD' };
   const custom = {
     path: String(c.path || '/v1/usage').trim(), method: c.method || 'GET', auth: c.auth || 'bearer',
     header: String(c.header || 'x-api-key').trim(), balanceField: fieldPath(c.balanceField || 'balance'),
@@ -42,7 +47,7 @@ function validateProfile(input, previous) {
   const needsKey = provider !== 'custom' || custom.auth !== 'none';
   if (needsKey && !key && !previous?.keyCipher) throw new Error('请填写该站点的 API Key');
   return {
-    id: previous?.id || crypto.randomUUID(), name, baseUrl, provider, currency,
+    id: previous?.id || crypto.randomUUID(), name, baseUrl, provider, currency, moneyConversion,
     interval: num(input.interval ?? 60, 30, 3600, '刷新间隔'),
     threshold: num(input.threshold ?? 5, 0, 1e9, '提醒阈值'),
     alert: input.alert !== false, enabled: input.enabled !== false, custom,

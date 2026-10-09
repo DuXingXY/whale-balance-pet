@@ -4,6 +4,8 @@ const fs = require('node:fs'); const path = require('node:path'); const { pathTo
 const { Store } = require('./core/store.cjs'); const { BalanceProvider } = require('./core/providers.cjs'); const { Monitor } = require('./core/monitor.cjs');
 const { placePet } = require('./core/placement.cjs');
 const { UsageService, normalizeUsage } = require('./core/usage.cjs');
+const { Spending } = require('./core/spending.cjs');
+const moneyConversion = require('./ui/money.js');
 const skins = require('./assets/skins.json');
 app.setName('WhaleBalance');
 const demo = process.argv.includes('--demo'); const qa = process.argv.includes('--qa');
@@ -12,11 +14,11 @@ if (explicitData) app.setPath('userData', path.resolve(explicitData));
 else if (demo) app.setPath('userData', path.join(app.getPath('temp'), 'whale-balance-demo-' + process.pid));
 if (process.platform === 'win32') { app.disableHardwareAcceleration(); app.setAppUserModelId('WhaleBalance.Desktop'); }
 if (!app.requestSingleInstanceLock()) { app.quit(); }
-let store, monitor, usageService, pet, manager, tray, quitting = false, dragStart = null;
+let store, monitor, usageService, spending, pet, manager, tray, quitting = false, dragStart = null;
 let petAnchor, petLayout, placing = false;
 const uiPath = f => path.join(__dirname, 'ui', f);
 const windowOptions = { contextIsolation: true, sandbox: true, nodeIntegration: false, preload: path.join(__dirname, 'preload.cjs') };
-function snapshot() { return { ...store.public(), states: monitor.all(), petLayout, skins, demo, encryptionAvailable: safeStorage.isEncryptionAvailable() }; }
+function snapshot() { return { ...store.public(), states: monitor.all(), spending: spending?.summary(), petLayout, skins, demo, encryptionAvailable: safeStorage.isEncryptionAvailable() }; }
 function broadcast() { const s = snapshot(); for (const win of [pet, manager]) if (win && !win.isDestroyed()) win.webContents.send('state', s); }
 function protect(win, file) {
   const trusted = pathToFileURL(file).href;
@@ -94,9 +96,10 @@ app.whenReady().then(() => {
       model_stats: [{ model: 'claude-sonnet-4-6', requests: Math.round(requests * .7), total_tokens: Math.round(total_tokens * .7) }, { model: 'gemini-2.5-pro', requests: requests - Math.round(requests * .7), total_tokens: total_tokens - Math.round(total_tokens * .7) }] }, period);
   };
   usageService = new UsageService(store, provider);
-  monitor = new Monitor(store, provider, { changed: broadcast, notify: (p, r) => {
-    if (!demo && !qa && Notification.isSupported()) { const n = new Notification({ title: p.name + ' · 余额提醒', body: '可用金额 ' + r.amount.toFixed(2) + ' ' + r.currency + '，已达到设定阈值', icon: path.join(__dirname, 'assets', 'whale.png') }); n.on('click', openManager); n.show(); }
+  monitor = new Monitor(store, provider, { changed: broadcast, observed: (p, r, at) => spending.observe(p, r, at), watch: () => spending?.runningSite, notify: (p, r) => {
+    if (!demo && !qa && Notification.isSupported()) { const shown = moneyConversion.convert(r.amount, r.currency, p); const n = new Notification({ title: p.name + ' · 余额提醒', body: '可用金额 ' + (shown.amount == null ? '—' : shown.amount.toFixed(2)) + ' ' + shown.currency + '，已达到设定阈值', icon: path.join(__dirname, 'assets', 'whale.png') }); n.on('click', openManager); n.show(); }
   } });
+  spending = new Spending(store, monitor, { changed: broadcast });
   const area = screen.getPrimaryDisplay().workArea;
   const saved = store.data.position;
   const bounds = { x: saved?.[0] ?? area.x + area.width - 365, y: saved?.[1] ?? area.y + area.height - 480, width: 340, height: 470 };
@@ -114,12 +117,13 @@ app.whenReady().then(() => {
   tray.setContextMenu(Menu.buildFromTemplate([{ label: '显示桌宠', click: petShow }, { label: '管理站点', click: openManager }, { type: 'separator' }, { label: '退出', click: () => app.quit() }])); tray.on('double-click', openManager);
   handle('get-state', 'any', () => snapshot());
   handle('open-manager', 'any', openManager);
-  handle('save-site', 'manager', input => { const p = store.save(input); monitor.invalidate(p.id); broadcast(); monitor.refresh(p.id); return p; });
-  handle('delete-site', 'manager', id => { if (typeof id !== 'string') throw new Error('站点标识无效'); monitor.invalidate(id); store.remove(id); broadcast(); });
+  handle('save-site', 'manager', input => { const p = store.save(input); spending.configure(p.id); monitor.invalidate(p.id); broadcast(); monitor.refresh(p.id); return p; });
+  handle('delete-site', 'manager', id => { if (typeof id !== 'string') throw new Error('站点标识无效'); spending.configure(id, true); monitor.invalidate(id); store.remove(id); broadcast(); });
   handle('select-site', 'manager', id => { store.select(id); store.preferences({ bubbleMode: 'selected' }); broadcast(); });
   handle('refresh', 'any', async id => { if (id === 'all') await refreshAll(); else await monitor.refresh(id); return snapshot(); });
   handle('test', 'manager', async input => { const { profile, key } = store.draft(input); return provider.query(profile, key); });
   handle('usage-summary', 'manager', range => usageService.query(range));
+  handle('spending-control', 'manager', arg => spending.control(arg));
   handle('copy-test-result', 'manager', text => { if (typeof text !== 'string' || text.length > 20000) throw new Error('复制内容无效'); clipboard.writeText(text); });
   handle('preferences', 'manager', p => { store.preferences(p); pet.setAlwaysOnTop(store.data.preferences.pinned); fitPet(Object.hasOwn(p, 'skin') || Object.hasOwn(p, 'petSize')); broadcast(); });
   handle('open-dashboard', 'any', id => { const p = store.get(id); if (p) return shell.openExternal(p.dashboardUrl); });
@@ -145,5 +149,6 @@ app.whenReady().then(() => {
   if (!qa && !store.data.sites.length) openManager();
 }).catch(error => { fs.writeFileSync(path.join(app.getPath('temp'), 'whale-balance-startup.txt'), '启动失败，请检查数据文件与运行时。'); app.quit(); });
 app.on('second-instance', () => { petShow(); openManager(); });
-app.on('before-quit', () => { quitting = true; monitor?.stop(); if (store && pet && !pet.isDestroyed()) savePosition(); tray?.destroy(); });
+app.on('before-quit', () => { quitting = true; spending?.shutdown(); monitor?.stop(); if (store && pet && !pet.isDestroyed()) savePosition(); tray?.destroy(); });
 app.on('window-all-closed', () => {});
+if (demo && qa && process.argv.some(a => a.startsWith('--qa-output='))) require('./scripts/qa-electron.cjs');

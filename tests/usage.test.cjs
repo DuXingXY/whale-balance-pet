@@ -42,6 +42,7 @@ test('same-origin duplicate key is queried and included once; distinct keys rema
   const service = new UsageService(store, { queryUsage: async (_p, _k, p) => { calls++; running++; peak = Math.max(peak, running); await new Promise(r => setTimeout(r, 10)); running--; return normalizeUsage({ usage: { total: { total_tokens: 100 } }, daily_usage: [], model_stats: [] }, p); } });
   const result = await service.query('all');
   assert.equal(calls, 5); assert.equal(peak, 3); assert.equal(result.rows[1].status, 'duplicate'); assert.equal(result.rows[6].status, 'unsupported');
+  assert.equal(result.rows[1].duplicateOf, '0');
   assert.equal(result.totals.total_tokens, 500); assert.equal(result.sources, 6); assert.equal(result.activeDays, 0);
 });
 test('7/30/90 totals use daily records, lifetime is separate, failures and changed profiles never contribute', async () => {

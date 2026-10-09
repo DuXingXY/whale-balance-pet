@@ -2,6 +2,10 @@
 const clamp = (v, min, max) => Math.max(min, Math.min(v, max));
 // Bounds describe the visible silhouette in the square character frame.
 function placePet(anchor, size, work, { snap = false, width = 340, height = 470, bounds = { left: 45 / 610, top: 10 / 610, right: 1, bottom: 1 } } = {}) {
+  // Assets face left. Mirror the complete character frame on the left half
+  // of its display, including its transparent insets for edge placement.
+  const facing = anchor.x + size / 2 < work.x + work.width / 2 ? 'right' : 'left';
+  if (facing === 'right') bounds = { ...bounds, left: 1 - bounds.right, right: 1 - bounds.left };
   const leftInset = size * bounds.left, topInset = size * bounds.top, rightExtent = size * bounds.right, bottomExtent = size * bounds.bottom;
   const right = work.x + work.width - Math.max(0, width - 340), bottom = work.y + work.height - Math.max(0, height - 470);
   let x = clamp(anchor.x, work.x - leftInset, right - rightExtent), y = clamp(anchor.y, work.y - topInset, bottom - bottomExtent);
@@ -23,7 +27,7 @@ function placePet(anchor, size, work, { snap = false, width = 340, height = 470,
   const wx = Math.round(clamp(x - defaultLeft, work.x, work.x + work.width - width));
   const wy = Math.round(clamp(below ? y : y - (470 - size - 17), work.y, work.y + work.height - height));
   const cy = y - wy;
-  return { anchor: { x, y }, window: { x: wx, y: wy }, character: { x: x - wx, y: cy },
+  return { facing, anchor: { x, y }, window: { x: wx, y: wy }, character: { x: x - wx, y: cy },
     bubble: { left: clamp(x - wx - defaultLeft, -22, 60), top: clamp(below ? cy + size + 10 : cy + topInset - aboveOffset, 0, 244), below },
     origin: { x: dockX === 'left' ? '0%' : dockX === 'right' ? '100%' : '50%', y: dockY === 'top' ? '0%' : dockY === 'bottom' ? '100%' : '95%' } };
 }

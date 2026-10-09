@@ -3,8 +3,9 @@ const { writeJson } = require('./store.cjs');
 const fs = require('node:fs'); const path = require('node:path');
 const dayOf = t => new Date(t + 8 * 3600000).toISOString().slice(0, 10);
 class Monitor {
-  constructor(store, provider, { notify = () => {}, changed = () => {}, now = Date.now } = {}) {
+  constructor(store, provider, { notify = () => {}, changed = () => {}, observed = () => {}, watch = () => null, now = Date.now } = {}) {
     this.store = store; this.provider = provider; this.notify = notify; this.changed = changed; this.now = now;
+    this.observed = observed; this.watch = watch;
     this.states = new Map(); this.jobs = new Map(); this.alerted = new Set(); this.active = 0; this.queue = [];
     this.file = path.join(store.dir, 'observations.json'); this.books = {};
     try { this.books = JSON.parse(fs.readFileSync(this.file, 'utf8')); } catch (e) { if (e.code !== 'ENOENT') this.books = {}; }
@@ -17,7 +18,15 @@ class Monitor {
   }
   all() { return Object.fromEntries(this.store.data.sites.map(p => [p.id, this.state(p.id)])); }
   invalidate(id) {
-    this.jobs.get(id)?.controller.abort(); this.states.delete(id); delete this.books[id]; this.alerted.delete(id);
+    const job = this.jobs.get(id);
+    if (job) {
+      // A replacement configuration must not join the cancelled request.
+      this.jobs.delete(id);
+      const queued = this.queue.findIndex(item => item.job === job);
+      if (queued >= 0) { this.queue.splice(queued, 1); job.resolve(); }
+      job.controller.abort();
+    }
+    this.states.delete(id); delete this.books[id]; this.alerted.delete(id);
     this.flush(); this.changed();
   }
   flush() { try { writeJson(this.file, this.books); } catch {} }
@@ -45,6 +54,7 @@ class Monitor {
       let decrease = prev?.day === day ? prev.decrease || 0 : 0;
       if (prev?.day === day && prev.snapshot.kind === result.kind && prev.snapshot.currency === result.currency && typeof result.amount === 'number' && typeof prev.snapshot.amount === 'number' && result.amount < prev.snapshot.amount) decrease += prev.snapshot.amount - result.amount;
       this.books[p.id] = { day, decrease: Math.round(decrease * 1e8) / 1e8, snapshot: result, at: now };
+      this.observed(p, result, now);
       this.states.set(p.id, { status: 'ok', snapshot: result, updatedAt: now, nextAt: now + p.interval * 1000 });
       this.flush(); this.changed();
       const low = p.alert && result.kind !== 'subscription' && typeof result.amount === 'number' && result.amount <= p.threshold;
@@ -55,7 +65,7 @@ class Monitor {
       this.states.set(p.id, { status: 'error', error: e.code ? e.message : '读取凭据或余额失败，请重新填写该站点 Key', nextAt: this.now() + Math.max(p.interval, 60) * 1000 }); this.changed();
     }
   }
-  tick() { for (const p of this.store.data.sites) if (p.enabled && (p.keyCipher || p.custom.auth === 'none') && !this.jobs.has(p.id) && (this.states.get(p.id)?.nextAt || 0) <= this.now()) this.refresh(p.id); }
+  tick() { for (const p of this.store.data.sites) if ((p.enabled || this.watch() === p.id) && (p.keyCipher || p.custom.auth === 'none') && !this.jobs.has(p.id) && (this.states.get(p.id)?.nextAt || 0) <= this.now()) this.refresh(p.id); }
   start() { this.tick(); this.timer = setInterval(() => this.tick(), 1000); }
   stop() { clearInterval(this.timer); for (const job of this.jobs.values()) job.controller.abort(); }
 }
